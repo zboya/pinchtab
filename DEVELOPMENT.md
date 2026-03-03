@@ -3,10 +3,56 @@
 ## Prerequisites
 
 - **Go 1.25+**
-- **Python 3.8+** (for pre-commit)
 - **Git**
+- **golangci-lint** (required for pre-commit hooks)
 
-## Setup
+## Quick Start
+
+```bash
+# 1. Clone
+git clone https://github.com/pinchtab/pinchtab.git
+cd pinchtab
+
+# 2. Setup (checks environment, installs hooks, downloads deps)
+./doctor.sh
+
+# 3. Build and run
+go build ./cmd/pinchtab
+./pinchtab
+```
+
+**Example output:**
+```
+🩺 Pinchtab Doctor
+Verifying and setting up development environment...
+
+━━━ Go Backend Requirements ━━━
+
+✅ Go 1.26.0
+✅ golangci-lint 2.9.0
+⚠️  Git hooks not installed
+   Installing git hooks...
+   ✅ Git hooks installed
+✅ Go dependencies
+
+━━━ Dashboard Requirements (React/TypeScript) ━━━
+
+✅ Node.js 22.22.0
+⚠️  Bun
+   Optional for dashboard. Install: curl -fsSL https://bun.sh/install | bash
+
+━━━ Summary ━━━
+
+✅ Setup complete! Auto-installed missing components.
+
+Next steps:
+  go build ./cmd/pinchtab     # Build pinchtab
+  go test ./...               # Run tests
+```
+
+That's it! `doctor.sh` verifies your environment and auto-installs what it can (git hooks, dependencies). Git hooks will run automatically on every commit.
+
+## Detailed Setup
 
 ### 1. Clone the repository
 
@@ -15,65 +61,80 @@ git clone https://github.com/pinchtab/pinchtab.git
 cd pinchtab
 ```
 
-### 2. Install pre-commit hooks
-
-This ensures gofmt and linting checks run **before** you commit.
+### 2. Run doctor script
 
 ```bash
-# Install pre-commit framework (one-time)
-pip install pre-commit
-# or: brew install pre-commit
-
-# Setup git hooks in this repo
-pre-commit install
-
-# (Optional) Run hooks on all files to verify setup
-pre-commit run --all-files
+./doctor.sh
 ```
 
-### 3. Verify Go environment
+This will:
+- **Check** Go 1.25+ and golangci-lint (tells you to install if missing)
+- **Auto-install** git hooks (gofmt + golangci-lint checks before commit)
+- **Auto-download** Go dependencies
+- **Check** Node.js / Bun for dashboard (optional, warns if missing)
 
+### 3. Install missing tools (if needed)
+
+If doctor.sh finds missing critical tools, install them:
+
+**Go 1.25+:**
+- Download from https://go.dev/dl/
+
+**golangci-lint (required for pre-commit hooks):**
 ```bash
-go version  # Should be 1.25+
-go mod download
+# macOS/Linux
+brew install golangci-lint
+
+# Or via Go
+go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 ```
+
+After installing, run `./doctor.sh` again to verify.
 
 ## Before Committing
 
-The pre-commit hooks will automatically run on `git commit`. If you need to manually format:
+Git hooks automatically run on `git commit`. To manually check your code:
 
 ```bash
-# Format all Go code
-./scripts/format.sh
-
-# Or directly
+# Format code
 gofmt -w .
 
-# Run linters manually
-pre-commit run --all-files
+# Run linter
+golangci-lint run
+
+# Run tests
+go test ./...
 ```
 
 ## Common Issues
 
-### "pre-commit: command not found"
+### "Git hooks not running on commit"
 
-Install pre-commit:
+Re-run setup:
 ```bash
-pip install pre-commit
+./scripts/install-hooks.sh
+```
+
+Verify hooks installed:
+```bash
+cat .git/hooks/pre-commit
+```
+
+### "golangci-lint: command not found" during commit
+
+Hooks will warn but still allow commit. To fix:
+```bash
+brew install golangci-lint
 # or
-brew install pre-commit
+go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 ```
 
-Then setup hooks:
+### gofmt fails in CI even though local commit worked
+
+Run format before committing:
 ```bash
-pre-commit install
+gofmt -w .
 ```
-
-### gofmt fails in CI even though pre-commit passed locally
-
-- Ensure you ran `pre-commit install` (not just installed the tool)
-- Verify hooks are installed: `cat .git/hooks/pre-commit`
-- Try updating: `pre-commit autoupdate`
 
 ### Tests failing locally
 
@@ -94,6 +155,12 @@ go test -run TestName ./...
 # All tests
 go test ./...
 
+# Verbose output
+go test -v ./...
+
+# Specific test
+go test -run TestName ./...
+
 # With coverage
 go test -cover ./...
 
@@ -104,9 +171,9 @@ go tool cover -html=coverage.out
 
 ## Code Style
 
-- **Format:** `gofmt` (automatic via pre-commit)
-- **Lint:** `golangci-lint` (automatic via pre-commit)
-- **Docs:** Files in `docs/` should follow Markdown standards (checked via pre-commit)
+- **Format:** `gofmt` (automatic via git hook, or run `gofmt -w .`)
+- **Lint:** `golangci-lint` (automatic via git hook, or run `golangci-lint run`)
+- **Tests:** Must pass (`go test ./...`)
 
 ## Git Workflow
 
@@ -117,11 +184,10 @@ git checkout -b feature/your-feature
 # 2. Make changes
 # ... edit files ...
 
-# 3. Format and test
-./scripts/format.sh
+# 3. Test your changes
 go test ./...
 
-# 4. Commit (pre-commit hooks run automatically)
+# 4. Commit (git hooks run automatically: gofmt + lint)
 git commit -m "feat: description"
 
 # 5. Push
@@ -129,6 +195,8 @@ git push origin feature/your-feature
 
 # 6. Create Pull Request on GitHub
 ```
+
+**Note:** Git hooks automatically run `gofmt` and `golangci-lint` on staged files before each commit. If checks fail, the commit is blocked.
 
 ## Documentation
 
@@ -149,23 +217,30 @@ Validate docs: `./scripts/check-docs-json.sh`
 ## Useful Commands
 
 ```bash
-# Format without committing
-gofmt -w .
+# Setup & Verification
+./doctor.sh                      # Check environment + auto-install hooks/deps
+./scripts/install-hooks.sh       # Manually re-install git hooks
 
-# Check what would be formatted
-gofmt -l .
+# Build & Run
+go build ./cmd/pinchtab          # Build pinchtab binary
+go run ./cmd/pinchtab            # Build and run
+go clean                         # Clean build cache
 
-# Run specific linter
-golangci-lint run
+# Code Quality
+gofmt -w .                       # Format all files
+gofmt -l .                       # List files that need formatting
+golangci-lint run                # Run linter
 
-# Clean build artifacts
-go clean
+# Testing
+go test ./...                    # Run all tests
+go test -v ./...                 # Verbose output
+go test -run TestName ./...      # Specific test
+go test -cover ./...             # With coverage
 
-# Update dependencies
-go get -u ./...
-
-# List all test functions
-go test -list .
+# Dependencies
+go mod download                  # Download dependencies
+go mod tidy                      # Clean up go.mod
+go get -u ./...                  # Update dependencies
 ```
 
 ## Getting Help
