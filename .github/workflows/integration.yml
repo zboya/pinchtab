@@ -28,7 +28,7 @@ jobs:
   changes:
     name: Detect Changes
     runs-on: ubuntu-latest
-    if: github.event.pull_request.draft == false
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     outputs:
       go: ${{ steps.filter.outputs.go }}
     steps:
@@ -45,28 +45,22 @@ jobs:
               - 'internal/**'
               - 'tests/integration/**'
 
-  integration:
-    name: Integration Tests
+  integration-core:
+    name: Integration Tests (Core)
     needs: changes
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 12
+    if: needs.changes.outputs.go == 'true'
+    env:
+      CORE_REGEX: '^Test(Health|Orchestrator_|Navigate_|Tabs_|Config_|Metrics_|Cookies_|Error_|Eval_|Upload_|Screenshot_)'
     steps:
-      - name: Skip if no Go changes
-        if: needs.changes.outputs.go != 'true'
-        run: |
-          echo "⏭️ No Go files changed, skipping integration tests"
-          echo "This is expected for docs/workflow-only changes"
-
       - uses: actions/checkout@v4
-        if: needs.changes.outputs.go == 'true'
 
       - uses: actions/setup-go@v5
-        if: needs.changes.outputs.go == 'true'
         with:
           go-version: '1.26'
 
       - name: Install Google Chrome (deb, avoids snap hangs)
-        if: needs.changes.outputs.go == 'true'
         run: |
           wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
           echo 'deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main' | sudo tee /etc/apt/sources.list.d/google-chrome.list
@@ -74,12 +68,106 @@ jobs:
           sudo apt-get install -y google-chrome-stable
           echo "CHROME_BINARY=/usr/bin/google-chrome" >> $GITHUB_ENV
 
-      - name: Run integration tests
-        if: needs.changes.outputs.go == 'true'
-        run: go test -tags integration -v -timeout 20m -count=1 ./tests/integration/
+      - name: Install gotestsum
+        run: go install gotest.tools/gotestsum@latest
+
+      - name: 🧪 Run core integration tests
+        run: |
+          echo "::group::Core Integration Tests Output"
+          gotestsum --format testname --jsonfile core-events.json -- \
+            -tags integration -v -timeout 10m -count=1 \
+            -run "$CORE_REGEX" ./tests/integration/
+          echo "::endgroup::"
         env:
           CI: "true"
           BRIDGE_HEADLESS: "true"
           BRIDGE_NO_RESTORE: "true"
           PINCHTAB_TEST_PORT: "19867"
           PINCHTAB_TEST_RETRY: "true"
+
+      - name: 📋 Add summary
+        if: always()
+        run: |
+          total=0
+          pass=0
+          fail=0
+          skip=0
+
+          if [ -s core-events.json ]; then
+            read total pass fail skip <<<"$(jq -r 'select(.Test != null and (.Action == "pass" or .Action == "fail" or .Action == "skip")) | [.Package, .Test, .Action] | @tsv' core-events.json \
+              | awk -F'\t' 'NF == 3 { key = $1 "\t" $2; status[key] = $3 } END { for (k in status) { t++; if (status[k] == "pass") p++; else if (status[k] == "fail") f++; else if (status[k] == "skip") s++; } printf "%d %d %d %d\n", t + 0, p + 0, f + 0, s + 0 }')"
+          fi
+
+          echo "### ✅ Integration Core Tests" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Status**: ${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Runner**: ubuntu-latest" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Port**: 19867" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Regex**: \`$CORE_REGEX\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Total tests**: $total" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Passed**: $pass" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Failed**: $fail" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Skipped**: $skip" >> "$GITHUB_STEP_SUMMARY"
+
+  integration-rest:
+    name: Integration Tests (Rest)
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: needs.changes.outputs.go == 'true'
+    env:
+      CORE_REGEX: '^Test(Health|Orchestrator_|Navigate_|Tabs_|Config_|Metrics_|Cookies_|Error_|Eval_|Upload_|Screenshot_)'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
+      - name: Install Google Chrome (deb, avoids snap hangs)
+        run: |
+          wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+          echo 'deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main' | sudo tee /etc/apt/sources.list.d/google-chrome.list
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
+          echo "CHROME_BINARY=/usr/bin/google-chrome" >> $GITHUB_ENV
+
+      - name: Install gotestsum
+        run: go install gotest.tools/gotestsum@latest
+
+      - name: 🧪 Run rest integration tests
+        run: |
+          echo "::group::Rest Integration Tests Output"
+          gotestsum --format testname --jsonfile rest-events.json -- \
+            -tags integration -v -timeout 12m -count=1 \
+            -run '^Test' -skip "$CORE_REGEX" ./tests/integration/
+          echo "::endgroup::"
+        env:
+          CI: "true"
+          BRIDGE_HEADLESS: "true"
+          BRIDGE_NO_RESTORE: "true"
+          PINCHTAB_TEST_PORT: "19868"
+          PINCHTAB_TEST_RETRY: "true"
+
+      - name: 📋 Add summary
+        if: always()
+        run: |
+          total=0
+          pass=0
+          fail=0
+          skip=0
+
+          if [ -s rest-events.json ]; then
+            read total pass fail skip <<<"$(jq -r 'select(.Test != null and (.Action == "pass" or .Action == "fail" or .Action == "skip")) | [.Package, .Test, .Action] | @tsv' rest-events.json \
+              | awk -F'\t' 'NF == 3 { key = $1 "\t" $2; status[key] = $3 } END { for (k in status) { t++; if (status[k] == "pass") p++; else if (status[k] == "fail") f++; else if (status[k] == "skip") s++; } printf "%d %d %d %d\n", t + 0, p + 0, f + 0, s + 0 }')"
+          fi
+
+          echo "### ✅ Integration Rest Tests" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Status**: ${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Runner**: ubuntu-latest" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Port**: 19868" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Selection**: all integration tests with core tests skipped" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Skip regex**: \`$CORE_REGEX\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Total tests**: $total" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Passed**: $pass" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Failed**: $fail" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Skipped**: $skip" >> "$GITHUB_STEP_SUMMARY"
