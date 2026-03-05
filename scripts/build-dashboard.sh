@@ -20,6 +20,13 @@ else
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 fi
 
+# Normalize tygo output with prettier so generation doesn't dirty git
+if [ -f "dashboard/src/generated/types.ts" ]; then
+  cd dashboard
+  npx prettier --write src/generated/types.ts 2>/dev/null || true
+  cd ..
+fi
+
 echo "📦 Building React dashboard..."
 cd dashboard
 
