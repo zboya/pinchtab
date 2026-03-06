@@ -24,6 +24,7 @@ type TabManager struct {
 	accessed   map[string]bool
 	snapshots  map[string]*RefCache
 	onTabSetup TabSetupFunc
+	currentTab string // ID of the most recently used tab
 	mu         sync.RWMutex
 }
 
@@ -45,7 +46,42 @@ func NewTabManager(browserCtx context.Context, cfg *config.RuntimeConfig, idMgr 
 func (tm *TabManager) markAccessed(tabID string) {
 	tm.mu.Lock()
 	tm.accessed[tabID] = true
+	if entry, ok := tm.tabs[tabID]; ok {
+		entry.LastUsed = time.Now()
+	}
+	tm.currentTab = tabID
 	tm.mu.Unlock()
+}
+
+// selectCurrentTrackedTab returns the current tab ID, falling back to the most
+// recently used tab if the explicit pointer is stale or unset.
+func (tm *TabManager) selectCurrentTrackedTab() string {
+	// Prefer explicit current tab if still tracked
+	if tm.currentTab != "" {
+		if _, ok := tm.tabs[tm.currentTab]; ok {
+			return tm.currentTab
+		}
+	}
+
+	// Fallback: pick the tab with the most recent LastUsed
+	var best string
+	var bestTime time.Time
+	for id, entry := range tm.tabs {
+		if entry.LastUsed.After(bestTime) {
+			best = id
+			bestTime = entry.LastUsed
+		}
+	}
+	// If no LastUsed set, fall back to most recent CreatedAt
+	if best == "" {
+		for id, entry := range tm.tabs {
+			if entry.CreatedAt.After(bestTime) {
+				best = id
+				bestTime = entry.CreatedAt
+			}
+		}
+	}
+	return best
 }
 
 // AccessedTabIDs returns the set of tab IDs that were accessed this session.
@@ -61,17 +97,23 @@ func (tm *TabManager) AccessedTabIDs() map[string]bool {
 
 func (tm *TabManager) TabContext(tabID string) (context.Context, string, error) {
 	if tabID == "" {
-		// Auto-select first tab when no ID provided
-		targets, err := tm.ListTargets()
-		if err != nil {
-			return nil, "", fmt.Errorf("list targets: %w", err)
+		// Resolve to current tracked tab
+		tm.mu.RLock()
+		tabID = tm.selectCurrentTrackedTab()
+		tm.mu.RUnlock()
+
+		if tabID == "" {
+			// No tracked tabs — try to find one from CDP targets
+			targets, err := tm.ListTargets()
+			if err != nil {
+				return nil, "", fmt.Errorf("list targets: %w", err)
+			}
+			if len(targets) == 0 {
+				return nil, "", fmt.Errorf("no tabs open")
+			}
+			rawID := string(targets[0].TargetID)
+			tabID = tm.idMgr.TabIDFromCDPTarget(rawID)
 		}
-		if len(targets) == 0 {
-			return nil, "", fmt.Errorf("no tabs open")
-		}
-		// Convert raw CDP ID to hash and look it up
-		rawID := string(targets[0].TargetID)
-		tabID = tm.idMgr.TabIDFromCDPTarget(rawID)
 	}
 
 	tm.mu.RLock()
@@ -88,13 +130,51 @@ func (tm *TabManager) TabContext(tabID string) (context.Context, string, error) 
 
 	tm.markAccessed(tabID)
 
-	// Return the canonical raw CDP ID so that operations like ref-cache
-	// lookups are consistent regardless of which ID form was used.
-	resolvedID := tabID
-	if entry.CDPID != "" {
-		resolvedID = entry.CDPID
+	return entry.Ctx, tabID, nil
+}
+
+// closeOldestTab evicts the tab with the earliest CreatedAt timestamp.
+func (tm *TabManager) closeOldestTab() error {
+	tm.mu.RLock()
+	var oldestID string
+	var oldestTime time.Time
+	for id, entry := range tm.tabs {
+		if oldestID == "" || entry.CreatedAt.Before(oldestTime) {
+			oldestID = id
+			oldestTime = entry.CreatedAt
+		}
 	}
-	return entry.Ctx, resolvedID, nil
+	tm.mu.RUnlock()
+
+	if oldestID == "" {
+		return fmt.Errorf("no tabs to evict")
+	}
+	slog.Info("evicting oldest tab", "id", oldestID, "createdAt", oldestTime)
+	return tm.CloseTab(oldestID)
+}
+
+// closeLRUTab evicts the tab with the earliest LastUsed timestamp.
+func (tm *TabManager) closeLRUTab() error {
+	tm.mu.RLock()
+	var lruID string
+	var lruTime time.Time
+	for id, entry := range tm.tabs {
+		t := entry.LastUsed
+		if t.IsZero() {
+			t = entry.CreatedAt
+		}
+		if lruID == "" || t.Before(lruTime) {
+			lruID = id
+			lruTime = t
+		}
+	}
+	tm.mu.RUnlock()
+
+	if lruID == "" {
+		return fmt.Errorf("no tabs to evict")
+	}
+	slog.Info("evicting LRU tab", "id", lruID, "lastUsed", lruTime)
+	return tm.CloseTab(lruID)
 }
 
 func (tm *TabManager) CreateTab(url string) (string, context.Context, context.CancelFunc, error) {
@@ -112,7 +192,18 @@ func (tm *TabManager) CreateTab(url string) (string, context.Context, context.Ca
 			// If check fails due to timeout, log warning but allow creation to proceed
 			slog.Warn("tab count check timed out, proceeding with creation", "error", err)
 		} else if len(targets) >= tm.config.MaxTabs {
-			return "", nil, nil, fmt.Errorf("tab limit reached (%d/%d) — close a tab first", len(targets), tm.config.MaxTabs)
+			switch tm.config.TabEvictionPolicy {
+			case "close_oldest":
+				if evictErr := tm.closeOldestTab(); evictErr != nil {
+					return "", nil, nil, fmt.Errorf("eviction failed: %w", evictErr)
+				}
+			case "close_lru":
+				if evictErr := tm.closeLRUTab(); evictErr != nil {
+					return "", nil, nil, fmt.Errorf("eviction failed: %w", evictErr)
+				}
+			default: // "reject"
+				return "", nil, nil, &TabLimitError{Current: len(targets), Max: tm.config.MaxTabs}
+			}
 		}
 	}
 
@@ -162,17 +253,17 @@ func (tm *TabManager) CreateTab(url string) (string, context.Context, context.Ca
 		_ = SetResourceBlocking(ctx, blockPatterns)
 	}
 
-	// Compute hash-based tab ID and store only that entry.
-	// Raw CDP ID is kept internal in the CDPID field.
 	rawCDPID := string(targetID)
-	hashTabID := tm.idMgr.TabIDFromCDPTarget(rawCDPID)
+	tabID := tm.idMgr.TabIDFromCDPTarget(rawCDPID)
+	now := time.Now()
 
 	tm.mu.Lock()
-	tm.tabs[hashTabID] = &TabEntry{Ctx: ctx, Cancel: cancel, CDPID: rawCDPID}
-	tm.accessed[hashTabID] = true
+	tm.tabs[tabID] = &TabEntry{Ctx: ctx, Cancel: cancel, CDPID: rawCDPID, CreatedAt: now, LastUsed: now}
+	tm.accessed[tabID] = true
+	tm.currentTab = tabID
 	tm.mu.Unlock()
 
-	return hashTabID, ctx, cancel, nil
+	return tabID, ctx, cancel, nil
 }
 
 func (tm *TabManager) CloseTab(tabID string) error {
@@ -193,7 +284,7 @@ func (tm *TabManager) CloseTab(tabID string) error {
 		entry.Cancel()
 	}
 
-	// Resolve hash alias → raw CDP target ID for the actual CDP close call
+	// Resolve to raw CDP target ID for the actual CDP close call
 	cdpTargetID := tabID
 	if tracked && entry.CDPID != "" {
 		cdpTargetID = entry.CDPID
@@ -292,18 +383,20 @@ func (tm *TabManager) DeleteRefCache(tabID string) {
 }
 
 func (tm *TabManager) RegisterTab(tabID string, ctx context.Context) {
+	now := time.Now()
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
-	tm.tabs[tabID] = &TabEntry{Ctx: ctx}
+	tm.tabs[tabID] = &TabEntry{Ctx: ctx, CreatedAt: now, LastUsed: now}
+	tm.currentTab = tabID
 }
 
-// RegisterHashTab registers a hash-based tab ID (e.g. "tab_XXXXXXXX") as an alias
-// for the given raw CDP target ID. This allows callers to use the hash ID for all
-// subsequent operations (action, snapshot, close) without knowing the raw CDP ID.
-func (tm *TabManager) RegisterHashTab(hashID, rawCDPID string, ctx context.Context, cancel context.CancelFunc) {
+// RegisterTabWithCancel registers a tab ID with its context and cancel function.
+func (tm *TabManager) RegisterTabWithCancel(tabID, rawCDPID string, ctx context.Context, cancel context.CancelFunc) {
+	now := time.Now()
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
-	tm.tabs[hashID] = &TabEntry{Ctx: ctx, Cancel: cancel, CDPID: rawCDPID}
+	tm.tabs[tabID] = &TabEntry{Ctx: ctx, Cancel: cancel, CDPID: rawCDPID, CreatedAt: now, LastUsed: now}
+	tm.currentTab = tabID
 }
 
 func (tm *TabManager) CleanStaleTabs(ctx context.Context, interval time.Duration) {

@@ -114,8 +114,8 @@ func TestOrchestrator_HashBasedIDs(t *testing.T) {
 		t.Fatalf("navigate failed: %d: %s", navStatus, string(navBody))
 	}
 
-	if !strings.HasPrefix(tabID, "tab_") || len(tabID) != 12 {
-		t.Fatalf("invalid tab ID format: %s", tabID)
+	if tabID == "" {
+		t.Fatalf("expected non-empty tab ID")
 	}
 
 	// Cleanup
@@ -330,8 +330,8 @@ func TestOrchestrator_ProxyRouting(t *testing.T) {
 		t.Fatalf("proxy navigate failed: %d: %s", status, string(body))
 	}
 
-	if !strings.HasPrefix(tabID, "tab_") {
-		t.Fatalf("invalid tab ID from proxy: %s", tabID)
+	if tabID == "" {
+		t.Fatalf("expected non-empty tab ID")
 	}
 
 	// Test snapshot via orchestrator proxy
@@ -504,8 +504,8 @@ func TestOrchestrator_FirstRequestLazyChrome(t *testing.T) {
 		t.Fatalf("navigate failed: %d: %s", status, string(body))
 	}
 
-	if !strings.HasPrefix(tabID, "tab_") {
-		t.Fatalf("invalid tab ID: %s", tabID)
+	if tabID == "" {
+		t.Fatalf("expected non-empty tab ID")
 	}
 
 	t.Logf("✓ Instance reached running state with lazy Chrome init; navigate succeeded: tabId=%s", tabID)

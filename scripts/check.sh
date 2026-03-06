@@ -37,10 +37,19 @@ unformatted=$(gofmt -l .)
 if [ -n "$unformatted" ]; then
   fail "gofmt" "Files not formatted:"
   echo "$unformatted" | while read f; do hint "  $f"; done
-  hint "Run: gofmt -w ."
-  exit 1
+  echo ""
+  printf "  Fix formatting now? (Y/n) "
+  read -r answer
+  if [ "$answer" != "n" ] && [ "$answer" != "N" ]; then
+    gofmt -w .
+    ok "gofmt (fixed)"
+  else
+    hint "Run: gofmt -w ."
+    exit 1
+  fi
+else
+  ok "gofmt"
 fi
-ok "gofmt"
 
 # ── Vet ──────────────────────────────────────────────────────────────
 

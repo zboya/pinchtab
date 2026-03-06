@@ -15,10 +15,12 @@ import (
 )
 
 type TabEntry struct {
-	Ctx      context.Context
-	Cancel   context.CancelFunc
-	Accessed bool
-	CDPID    string // raw CDP target ID; set when this entry is a hash-alias
+	Ctx       context.Context
+	Cancel    context.CancelFunc
+	Accessed  bool
+	CDPID     string    // raw CDP target ID
+	CreatedAt time.Time // when the tab was first created/registered
+	LastUsed  time.Time // last time the tab was accessed via TabContext
 }
 
 type RefCache struct {

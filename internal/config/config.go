@@ -34,10 +34,15 @@ type RuntimeConfig struct {
 	UserAgent         string
 	NoAnimations      bool
 	StealthLevel      string
+	TabEvictionPolicy string // "reject" (default), "close_oldest", "close_lru"
 	ActionTimeout     time.Duration
 	NavigateTimeout   time.Duration
 	ShutdownTimeout   time.Duration
 	WaitNavDelay      time.Duration
+
+	// Orchestrator settings (dashboard mode only).
+	Strategy         string // "simple" (default) or "explicit"
+	AllocationPolicy string // "fcfs" (default), "round_robin", "random"
 }
 
 func envOr(key, fallback string) string {
@@ -247,6 +252,9 @@ func Load() *RuntimeConfig {
 		UserAgent:         envMigrate("PINCHTAB_USER_AGENT", "BRIDGE_USER_AGENT"),
 		NoAnimations:      envBoolOrMigrate("PINCHTAB_NO_ANIMATIONS", "BRIDGE_NO_ANIMATIONS", false),
 		StealthLevel:      envOrMigrate("PINCHTAB_STEALTH", "BRIDGE_STEALTH", "light"),
+		TabEvictionPolicy: envOr("PINCHTAB_TAB_EVICTION_POLICY", "reject"),
+		Strategy:          envOr("PINCHTAB_STRATEGY", "simple"),
+		AllocationPolicy:  envOr("PINCHTAB_ALLOCATION_POLICY", "fcfs"),
 		ActionTimeout:     30 * time.Second,
 		NavigateTimeout:   60 * time.Second,
 		ShutdownTimeout:   10 * time.Second,

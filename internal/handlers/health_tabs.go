@@ -95,13 +95,14 @@ func (h *Handlers) HandleTabs(w http.ResponseWriter, r *http.Request) {
 
 	tabs := make([]map[string]any, 0, len(targets))
 	for _, t := range targets {
+		tabID := string(t.TargetID)
 		entry := map[string]any{
-			"id":    string(t.TargetID),
+			"id":    tabID,
 			"url":   t.URL,
 			"title": t.Title,
 			"type":  t.Type,
 		}
-		if lock := h.Bridge.TabLockInfo(string(t.TargetID)); lock != nil {
+		if lock := h.Bridge.TabLockInfo(tabID); lock != nil {
 			entry["owner"] = lock.Owner
 			entry["lockedUntil"] = lock.ExpiresAt.Format(time.RFC3339)
 		}
