@@ -296,10 +296,11 @@ func TestProfileHandlerCreate(t *testing.T) {
 func TestProfileHandlerReset(t *testing.T) {
 	pm := NewProfileManager(t.TempDir())
 	_ = pm.Create("resettable")
+	id := profileID("resettable")
 	mux := http.NewServeMux()
 	pm.RegisterHandlers(mux)
 
-	req := httptest.NewRequest("POST", "/profiles/resettable/reset", nil)
+	req := httptest.NewRequest("POST", "/profiles/"+id+"/reset", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -311,10 +312,11 @@ func TestProfileHandlerReset(t *testing.T) {
 func TestProfileHandlerDelete(t *testing.T) {
 	pm := NewProfileManager(t.TempDir())
 	_ = pm.Create("deletable")
+	id := profileID("deletable")
 	mux := http.NewServeMux()
 	pm.RegisterHandlers(mux)
 
-	req := httptest.NewRequest("DELETE", "/profiles/deletable", nil)
+	req := httptest.NewRequest("DELETE", "/profiles/"+id, nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -604,5 +606,65 @@ func TestProfileDeleteRejectsPathTraversal(t *testing.T) {
 				t.Errorf("Delete(%q) should have returned error", name)
 			}
 		})
+	}
+}
+
+func TestProfileRename(t *testing.T) {
+	dir := t.TempDir()
+	pm := NewProfileManager(dir)
+
+	if err := pm.Create("old-name"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := pm.Rename("old-name", "new-name"); err != nil {
+		t.Fatalf("Rename failed: %v", err)
+	}
+
+	if pm.Exists("old-name") {
+		t.Error("old name should not exist after rename")
+	}
+	if !pm.Exists("new-name") {
+		t.Error("new name should exist after rename")
+	}
+
+	profiles, _ := pm.List()
+	if len(profiles) != 1 {
+		t.Fatalf("expected 1 profile, got %d", len(profiles))
+	}
+	if profiles[0].Name != "new-name" {
+		t.Errorf("expected name new-name, got %s", profiles[0].Name)
+	}
+	if profiles[0].ID != profileID("new-name") {
+		t.Errorf("expected ID %s, got %s", profileID("new-name"), profiles[0].ID)
+	}
+}
+
+func TestProfileRenameRejectsPathTraversal(t *testing.T) {
+	pm := NewProfileManager(t.TempDir())
+	_ = pm.Create("legit")
+
+	badNames := []string{"../evil", "evil/../other", "..\\windows"}
+	for _, name := range badNames {
+		t.Run("to_"+name, func(t *testing.T) {
+			err := pm.Rename("legit", name)
+			if err == nil {
+				t.Errorf("Rename to %q should have returned error", name)
+			}
+		})
+	}
+}
+
+func TestProfileRenameRejectsDuplicate(t *testing.T) {
+	pm := NewProfileManager(t.TempDir())
+	_ = pm.Create("profile-a")
+	_ = pm.Create("profile-b")
+
+	err := pm.Rename("profile-a", "profile-b")
+	if err == nil {
+		t.Error("Rename to existing name should fail")
+	}
+	if !strings.Contains(err.Error(), "already exists") {
+		t.Errorf("expected 'already exists' error, got: %v", err)
 	}
 }

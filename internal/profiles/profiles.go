@@ -429,6 +429,52 @@ func (pm *ProfileManager) UpdateMeta(name string, meta map[string]string) error 
 	return writeProfileMeta(dir, existing)
 }
 
+func (pm *ProfileManager) Rename(oldName, newName string) error {
+	if err := ValidateProfileName(oldName); err != nil {
+		return err
+	}
+	if err := ValidateProfileName(newName); err != nil {
+		return err
+	}
+	if oldName == newName {
+		return nil
+	}
+
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	oldDir, err := pm.findProfileDirByName(oldName)
+	if err != nil {
+		return err
+	}
+
+	if _, err := pm.findProfileDirByName(newName); err == nil {
+		return fmt.Errorf("profile %q already exists", newName)
+	}
+
+	newDir := filepath.Join(pm.baseDir, profileID(newName))
+	if _, err := os.Stat(newDir); err == nil {
+		return fmt.Errorf("profile directory for %q already exists", newName)
+	}
+
+	meta := readProfileMeta(oldDir)
+	meta.ID = profileID(newName)
+	meta.Name = newName
+	if err := writeProfileMeta(oldDir, meta); err != nil {
+		return fmt.Errorf("failed to update profile metadata: %w", err)
+	}
+
+	if err := os.Rename(oldDir, newDir); err != nil {
+		meta.ID = profileID(oldName)
+		meta.Name = oldName
+		_ = writeProfileMeta(oldDir, meta)
+		return fmt.Errorf("failed to rename profile directory: %w", err)
+	}
+
+	slog.Info("profile renamed", "from", oldName, "to", newName)
+	return nil
+}
+
 func (pm *ProfileManager) FindByID(id string) (string, error) {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()

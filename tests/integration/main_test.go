@@ -15,8 +15,9 @@ import (
 )
 
 var (
-	serverURL    string
-	currentTabID string // Track current tab for action operations
+	serverURL      string
+	currentTabID   string // Track current tab for action operations
+	testBinaryPath string
 )
 
 func TestMain(m *testing.M) {
@@ -26,8 +27,11 @@ func TestMain(m *testing.M) {
 	}
 	serverURL = fmt.Sprintf("http://localhost:%s", port)
 
+	// Use unique binary path to avoid conflicts with other users
+	testBinaryPath = fmt.Sprintf("/tmp/pinchtab-test-%d", os.Getpid())
+
 	// Build the binary
-	build := exec.Command("go", "build", "-o", "/tmp/pinchtab-test", "./cmd/pinchtab/")
+	build := exec.Command("go", "build", "-o", testBinaryPath, "./cmd/pinchtab/")
 	build.Dir = findRepoRoot()
 	build.Stdout = os.Stdout
 	build.Stderr = os.Stderr
@@ -35,9 +39,11 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "failed to build pinchtab: %v\n", err)
 		os.Exit(1)
 	}
+	// Clean up binary on exit
+	defer os.Remove(testBinaryPath)
 
 	// Start server
-	cmd := exec.Command("/tmp/pinchtab-test")
+	cmd := exec.Command(testBinaryPath)
 
 	// Build environment for subprocess
 	// Start with a filtered set of inherited env vars, then add test-specific ones

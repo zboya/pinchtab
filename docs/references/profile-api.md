@@ -197,23 +197,31 @@ curl -X POST http://localhost:9867/profiles \
 **Endpoint:** `PATCH /profiles/{id}`
 
 **Parameters:**
-- `id` (string, path) — Profile ID or name
+- `id` (string, path) — Profile ID (e.g. `prof_abc123`). Name is not accepted.
+- `name` (string, body, optional) — New name for the profile (rename)
 - `description` (string, body, optional) — Profile description
 - `useWhen` (string, body, optional) — Use case guidance for agents
 
 **Curl:**
 ```bash
-curl -X PATCH http://localhost:9867/profiles/my-profile \
+# Update metadata
+curl -X PATCH http://localhost:9867/profiles/prof_abc123 \
   -H "Content-Type: application/json" \
   -d '{
     "description": "Updated description",
     "useWhen": "Updated use case"
   }'
+
+# Rename a profile
+curl -X PATCH http://localhost:9867/profiles/prof_abc123 \
+  -H "Content-Type: application/json" \
+  -d '{"name": "new-name"}'
 ```
 
 **Request Body:**
 ```json
 {
+  "name": "new-profile-name",
   "description": "New description for the profile",
   "useWhen": "New use case guidance"
 }
@@ -223,14 +231,17 @@ curl -X PATCH http://localhost:9867/profiles/my-profile \
 ```json
 {
   "status": "updated",
-  "id": "my-profile",
-  "name": "my-profile"
+  "id": "prof_def456",
+  "name": "new-profile-name"
 }
 ```
 
 **Notes:**
 - Only provided fields are updated
-- Can omit either field to update only one
+- Can omit any field to update only the others
+- **Must use profile ID, not name** — returns 404 if name is used
+- Renaming updates both the profile name and generates a new ID
+- Returns 409 Conflict if the new name already exists
 
 ---
 
@@ -239,28 +250,29 @@ curl -X PATCH http://localhost:9867/profiles/my-profile \
 **Endpoint:** `DELETE /profiles/{id}`
 
 **Parameters:**
-- `id` (string, path) — Profile ID or name
+- `id` (string, path) — Profile ID (e.g. `prof_abc123`). Name is not accepted.
 
 **CLI:**
 ```bash
-pinchtab profile delete my-profile
+pinchtab profile delete prof_abc123
 ```
 
 **Curl:**
 ```bash
-curl -X DELETE http://localhost:9867/profiles/my-profile
+curl -X DELETE http://localhost:9867/profiles/prof_abc123
 ```
 
 **Response:**
 ```json
 {
   "status": "deleted",
-  "id": "my-profile",
+  "id": "prof_abc123",
   "name": "my-profile"
 }
 ```
 
 **Notes:**
+- **Must use profile ID, not name** — returns 404 if name is used
 - Recursively deletes entire profile directory
 - Returns 404 if profile not found
 - Deletion is permanent and cannot be undone
@@ -272,18 +284,18 @@ curl -X DELETE http://localhost:9867/profiles/my-profile
 **Endpoint:** `POST /profiles/{id}/reset`
 
 **Parameters:**
-- `id` (string, path) — Profile ID or name
+- `id` (string, path) — Profile ID (e.g. `prof_abc123`). Name is not accepted.
 
 **Curl:**
 ```bash
-curl -X POST http://localhost:9867/profiles/my-profile/reset
+curl -X POST http://localhost:9867/profiles/prof_abc123/reset
 ```
 
 **Response:**
 ```json
 {
   "status": "reset",
-  "id": "my-profile",
+  "id": "prof_abc123",
   "name": "my-profile"
 }
 ```
@@ -789,7 +801,7 @@ async function deleteProfile(id) {
 ## FAQ
 
 **Q: Can I rename a profile?**
-A: Not directly. Create a new profile with the desired name and delete the old one.
+A: Yes, use `PATCH /profiles/{id}` with `{"name": "new-name"}` in the request body. You must use the profile ID (e.g. `prof_abc123`), not the profile name.
 
 **Q: Can I move profiles to different machines?**
 A: Yes, use POST /profiles/import with the profile directory from another machine.
@@ -818,9 +830,9 @@ A: Copy the profile directory from `~/.pinchtab/profiles/<name>/`.
 | List | GET | `/profiles` | None |
 | Get | GET | `/profiles/{id}` | ID or name |
 | Create | POST | `/profiles` | Name |
-| Update | PATCH | `/profiles/{id}` | ID or name |
-| Delete | DELETE | `/profiles/{id}` | ID or name |
-| Reset | POST | `/profiles/{id}/reset` | ID or name |
+| Update | PATCH | `/profiles/{id}` | **ID only** |
+| Delete | DELETE | `/profiles/{id}` | **ID only** |
+| Reset | POST | `/profiles/{id}/reset` | **ID only** |
 | Logs | GET | `/profiles/{id}/logs` | ID or name |
 | Analytics | GET | `/profiles/{id}/analytics` | ID or name |
 | Import | POST | `/profiles/import` | Name + source path |

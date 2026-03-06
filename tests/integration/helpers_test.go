@@ -11,6 +11,45 @@ import (
 	"time"
 )
 
+func httpPatch(t *testing.T, path string, payload any) (int, []byte) {
+	t.Helper()
+	var reader io.Reader
+	if payload != nil {
+		data, err := json.Marshal(payload)
+		if err != nil {
+			t.Fatalf("marshal failed: %v", err)
+		}
+		reader = strings.NewReader(string(data))
+	}
+	req, err := http.NewRequest("PATCH", serverURL+path, reader)
+	if err != nil {
+		t.Fatalf("PATCH %s request creation failed: %v", path, err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("PATCH %s failed: %v", path, err)
+	}
+	defer resp.Body.Close() //nolint:errcheck
+	body, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, body
+}
+
+func httpDelete(t *testing.T, path string) (int, []byte) {
+	t.Helper()
+	req, err := http.NewRequest("DELETE", serverURL+path, nil)
+	if err != nil {
+		t.Fatalf("DELETE %s request creation failed: %v", path, err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("DELETE %s failed: %v", path, err)
+	}
+	defer resp.Body.Close() //nolint:errcheck
+	body, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, body
+}
+
 // httpPostWithRetry attempts a POST request with retries for flaky tests
 func httpPostWithRetry(t *testing.T, path string, body any, maxRetries int) (int, []byte) {
 	t.Helper()

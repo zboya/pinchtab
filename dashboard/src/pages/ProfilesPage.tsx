@@ -118,6 +118,20 @@ export default function ProfilesPage() {
     }
   };
 
+  const handleSave = async (name: string, useWhen: string) => {
+    if (!showDetails?.id) return;
+    try {
+      await api.updateProfile(showDetails.id, {
+        name: name !== showDetails.name ? name : undefined,
+        useWhen: useWhen !== showDetails.useWhen ? useWhen : undefined,
+      });
+      setShowDetails(null);
+      loadProfiles();
+    } catch (e) {
+      console.error("Failed to update profile", e);
+    }
+  };
+
   // Generate launch command
   const launchCommand = useMemo(() => {
     if (!showLaunch) return "";
@@ -312,6 +326,7 @@ export default function ProfilesPage() {
           showDetails ? instanceByProfile.get(showDetails.name) : undefined
         }
         onClose={() => setShowDetails(null)}
+        onSave={handleSave}
         onDelete={handleDelete}
       />
     </div>

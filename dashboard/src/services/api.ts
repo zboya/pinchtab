@@ -42,6 +42,29 @@ export async function deleteProfile(id: string): Promise<void> {
   });
 }
 
+export interface UpdateProfileRequest {
+  name?: string;
+  useWhen?: string;
+  description?: string;
+}
+
+export interface UpdateProfileResponse {
+  status: string;
+  id: string;
+  name: string;
+}
+
+export async function updateProfile(
+  id: string,
+  data: UpdateProfileRequest,
+): Promise<UpdateProfileResponse> {
+  return request<UpdateProfileResponse>(`/profiles/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
 // Instances — endpoint is /instances (no /api prefix)
 export async function fetchInstances(): Promise<Instance[]> {
   return request<Instance[]>("/instances");

@@ -100,3 +100,5 @@ func TestProfile_ValidNamesAccepted(t *testing.T) {
 		})
 	}
 }
+
+// Profile rename tests are in profile_rename_test.go

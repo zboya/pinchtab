@@ -22,7 +22,7 @@ func (pm *ProfileManager) RegisterHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("GET /profiles/{id}/logs", pm.handleLogsByIDOrName)
 	mux.HandleFunc("GET /profiles/{id}/analytics", pm.handleAnalyticsByIDOrName)
 	mux.HandleFunc("DELETE /profiles/{id}", pm.handleDeleteByID)
-	mux.HandleFunc("PATCH /profiles/{id}", pm.handleUpdateByIDOrName)
+	mux.HandleFunc("PATCH /profiles/{id}", pm.handleUpdateByID)
 }
 
 func (pm *ProfileManager) handleList(w http.ResponseWriter, r *http.Request) {
@@ -208,17 +208,14 @@ func (pm *ProfileManager) handleGetByID(w http.ResponseWriter, r *http.Request) 
 func (pm *ProfileManager) handleDeleteByID(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	name, err := pm.FindByID(id)
+	name, err := pm.resolveIDOnly(id)
 	if err != nil {
-		name = id
-		if !pm.Exists(name) {
-			web.Error(w, 404, fmt.Errorf("profile %q not found", id))
-			return
-		}
+		web.Error(w, 404, err)
+		return
 	}
 
 	if err := pm.Delete(name); err != nil {
-		web.Error(w, 404, err)
+		web.Error(w, 500, err)
 		return
 	}
 
@@ -236,9 +233,17 @@ func (pm *ProfileManager) resolveIDOrName(idOrName string) (string, error) {
 	return "", fmt.Errorf("profile %q not found (not a valid ID or name)", idOrName)
 }
 
-func (pm *ProfileManager) handleUpdateByIDOrName(w http.ResponseWriter, r *http.Request) {
-	idOrName := r.PathValue("id")
-	name, err := pm.resolveIDOrName(idOrName)
+func (pm *ProfileManager) resolveIDOnly(id string) (string, error) {
+	name, err := pm.FindByID(id)
+	if err != nil {
+		return "", fmt.Errorf("profile %q not found (must use profile ID, not name)", id)
+	}
+	return name, nil
+}
+
+func (pm *ProfileManager) handleUpdateByID(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	name, err := pm.resolveIDOnly(id)
 	if err != nil {
 		web.Error(w, 404, err)
 		return
@@ -254,6 +259,21 @@ func (pm *ProfileManager) handleUpdateByIDOrName(w http.ResponseWriter, r *http.
 		return
 	}
 
+	finalName := name
+	if req.Name != "" && req.Name != name {
+		if err := pm.Rename(name, req.Name); err != nil {
+			if strings.Contains(err.Error(), "already exists") {
+				web.Error(w, 409, err)
+			} else if strings.Contains(err.Error(), "cannot contain") || strings.Contains(err.Error(), "cannot be empty") {
+				web.Error(w, 400, err)
+			} else {
+				web.Error(w, 500, err)
+			}
+			return
+		}
+		finalName = req.Name
+	}
+
 	updates := make(map[string]string)
 	if req.Description != "" {
 		updates["description"] = req.Description
@@ -262,28 +282,28 @@ func (pm *ProfileManager) handleUpdateByIDOrName(w http.ResponseWriter, r *http.
 		updates["useWhen"] = req.UseWhen
 	}
 	if len(updates) > 0 {
-		if err := pm.UpdateMeta(name, updates); err != nil {
-			web.Error(w, 404, err)
+		if err := pm.UpdateMeta(finalName, updates); err != nil {
+			web.Error(w, 500, err)
 			return
 		}
 	}
 
-	web.JSON(w, 200, map[string]any{"status": "updated", "id": idOrName, "name": name})
+	web.JSON(w, 200, map[string]any{"status": "updated", "id": profileID(finalName), "name": finalName})
 }
 
 func (pm *ProfileManager) handleResetByIDOrName(w http.ResponseWriter, r *http.Request) {
-	idOrName := r.PathValue("id")
-	name, err := pm.resolveIDOrName(idOrName)
+	id := r.PathValue("id")
+	name, err := pm.resolveIDOnly(id)
 	if err != nil {
 		web.Error(w, 404, err)
 		return
 	}
 
 	if err := pm.Reset(name); err != nil {
-		web.Error(w, 404, err)
+		web.Error(w, 500, err)
 		return
 	}
-	web.JSON(w, 200, map[string]any{"status": "reset", "id": idOrName, "name": name})
+	web.JSON(w, 200, map[string]any{"status": "reset", "id": id, "name": name})
 }
 
 func (pm *ProfileManager) handleLogsByIDOrName(w http.ResponseWriter, r *http.Request) {
