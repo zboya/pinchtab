@@ -1110,7 +1110,11 @@ func BenchmarkCombinedMatcher_SynonymQuery(b *testing.B) {
 	opts := FindOptions{Threshold: 0.15, TopK: 3}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		matcher.Find(ctx, "sign in", elements, opts)
+		result, err := matcher.Find(ctx, "sign in", elements, opts)
+		if err != nil {
+			b.Fatalf("Find error: %v", err)
+		}
+		_ = result
 	}
 }
 
