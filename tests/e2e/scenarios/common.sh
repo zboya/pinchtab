@@ -23,19 +23,29 @@ TESTS_FAILED=0
 ASSERTIONS_PASSED=0
 ASSERTIONS_FAILED=0
 
+# Test timing
+TEST_START_TIME=0
+TEST_RESULTS=()
+
 # Start a test
 start_test() {
   CURRENT_TEST="$1"
+  TEST_START_TIME=$(date +%s%3N)
   echo -e "${BLUE}▶ ${CURRENT_TEST}${NC}"
 }
 
 # End a test
 end_test() {
+  local end_time=$(date +%s%3N)
+  local duration=$((end_time - TEST_START_TIME))
+  
   if [ "$ASSERTIONS_FAILED" -eq 0 ]; then
-    echo -e "${GREEN}✓ ${CURRENT_TEST} passed${NC}\n"
+    echo -e "${GREEN}✓ ${CURRENT_TEST} passed${NC} ${MUTED}(${duration}ms)${NC}\n"
+    TEST_RESULTS+=("✅ ${CURRENT_TEST}|${duration}ms|passed")
     ((TESTS_PASSED++)) || true
   else
-    echo -e "${RED}✗ ${CURRENT_TEST} failed${NC}\n"
+    echo -e "${RED}✗ ${CURRENT_TEST} failed${NC} ${MUTED}(${duration}ms)${NC}\n"
+    TEST_RESULTS+=("❌ ${CURRENT_TEST}|${duration}ms|failed")
     ((TESTS_FAILED++)) || true
   fi
   ASSERTIONS_PASSED=0
@@ -166,14 +176,80 @@ pt_post() {
 
 # Print summary
 print_summary() {
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  local total=$((TESTS_PASSED + TESTS_FAILED))
+  local total_time=0
+  
+  echo ""
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   echo -e "${BLUE}E2E Test Summary${NC}"
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo -e "Passed: ${GREEN}${TESTS_PASSED}${NC}"
-  echo -e "Failed: ${RED}${TESTS_FAILED}${NC}"
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo ""
+  printf "  %-40s %10s %10s\n" "Test" "Duration" "Status"
+  echo "  ────────────────────────────────────────────────────────"
+  
+  for result in "${TEST_RESULTS[@]}"; do
+    IFS='|' read -r name duration status <<< "$result"
+    local time_num=${duration%ms}
+    ((total_time += time_num)) || true
+    if [ "$status" = "passed" ]; then
+      printf "  %-40s %10s ${GREEN}%10s${NC}\n" "$name" "$duration" "✓"
+    else
+      printf "  %-40s %10s ${RED}%10s${NC}\n" "$name" "$duration" "✗"
+    fi
+  done
+  
+  echo "  ────────────────────────────────────────────────────────"
+  printf "  %-40s %10s\n" "Total" "${total_time}ms"
+  echo ""
+  echo -e "  ${GREEN}Passed:${NC} ${TESTS_PASSED}/${total}"
+  echo -e "  ${RED}Failed:${NC} ${TESTS_FAILED}/${total}"
+  echo ""
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  
+  # Generate markdown report for CI
+  if [ -d "${RESULTS_DIR:-}" ]; then
+    generate_markdown_report > "${RESULTS_DIR}/report.md"
+    echo "passed=$TESTS_PASSED" > "${RESULTS_DIR}/summary.txt"
+    echo "failed=$TESTS_FAILED" >> "${RESULTS_DIR}/summary.txt"
+    echo "total_time=${total_time}ms" >> "${RESULTS_DIR}/summary.txt"
+    echo "timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${RESULTS_DIR}/summary.txt"
+  fi
   
   if [ "$TESTS_FAILED" -gt 0 ]; then
     exit 1
   fi
+}
+
+# Generate markdown report
+generate_markdown_report() {
+  local total=$((TESTS_PASSED + TESTS_FAILED))
+  local total_time=0
+  
+  echo "## 🦀 PinchTab E2E Test Report"
+  echo ""
+  if [ "$TESTS_FAILED" -eq 0 ]; then
+    echo "**Status:** ✅ All tests passed"
+  else
+    echo "**Status:** ❌ ${TESTS_FAILED} test(s) failed"
+  fi
+  echo ""
+  echo "| Test | Duration | Status |"
+  echo "|------|----------|--------|"
+  
+  for result in "${TEST_RESULTS[@]}"; do
+    IFS='|' read -r name duration status <<< "$result"
+    local time_num=${duration%ms}
+    ((total_time += time_num)) || true
+    local icon="✅"
+    [ "$status" = "failed" ] && icon="❌"
+    # Remove emoji from name for cleaner table
+    local clean_name="${name#✅ }"
+    clean_name="${clean_name#❌ }"
+    echo "| ${clean_name} | ${duration} | ${icon} |"
+  done
+  
+  echo ""
+  echo "**Summary:** ${TESTS_PASSED}/${total} passed in ${total_time}ms"
+  echo ""
+  echo "<sub>Generated at $(date -u +%Y-%m-%dT%H:%M:%SZ)</sub>"
 }
