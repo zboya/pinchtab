@@ -9,7 +9,6 @@ coverage.out
 
 # Build artifacts and test output
 dist/
-*.js
 !scripts/**/*.js
 !dashboard/eslint.config.js
 !dashboard/vite.config.ts

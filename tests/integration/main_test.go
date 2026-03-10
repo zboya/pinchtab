@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/pinchtab/pinchtab/tests/testutil"
+	"github.com/zboya/pinchtab/tests/testutil"
 )
 
 var (

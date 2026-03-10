@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pinchtab/pinchtab/internal/config"
+	"github.com/zboya/pinchtab/pkg/config"
 )
 
 func printHelp() {
@@ -1232,7 +1232,7 @@ To start the server:
 Then try your command again:
   %s
 
-Learn more: https://github.com/pinchtab/pinchtab#quick-start
+Learn more: https://github.com/zboya/pinchtab#quick-start
 `, base, strings.Join(os.Args, " "))
 			return false
 		}

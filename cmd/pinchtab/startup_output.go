@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/pinchtab/pinchtab/internal/config"
+	"github.com/zboya/pinchtab/pkg/config"
 )
 
 type startupBannerOptions struct {

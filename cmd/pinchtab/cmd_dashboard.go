@@ -13,20 +13,20 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/pinchtab/pinchtab/internal/config"
-	"github.com/pinchtab/pinchtab/internal/dashboard"
-	"github.com/pinchtab/pinchtab/internal/handlers"
-	"github.com/pinchtab/pinchtab/internal/orchestrator"
-	"github.com/pinchtab/pinchtab/internal/profiles"
-	"github.com/pinchtab/pinchtab/internal/proxy"
-	"github.com/pinchtab/pinchtab/internal/scheduler"
-	"github.com/pinchtab/pinchtab/internal/strategy"
-	"github.com/pinchtab/pinchtab/internal/web"
+	"github.com/zboya/pinchtab/pkg/config"
+	"github.com/zboya/pinchtab/pkg/dashboard"
+	"github.com/zboya/pinchtab/pkg/handlers"
+	"github.com/zboya/pinchtab/pkg/orchestrator"
+	"github.com/zboya/pinchtab/pkg/profiles"
+	"github.com/zboya/pinchtab/pkg/proxy"
+	"github.com/zboya/pinchtab/pkg/scheduler"
+	"github.com/zboya/pinchtab/pkg/strategy"
+	"github.com/zboya/pinchtab/pkg/web"
 
 	// Register strategies via init().
-	_ "github.com/pinchtab/pinchtab/internal/strategy/autorestart"
-	_ "github.com/pinchtab/pinchtab/internal/strategy/explicit"
-	_ "github.com/pinchtab/pinchtab/internal/strategy/simple"
+	_ "github.com/zboya/pinchtab/pkg/strategy/autorestart"
+	_ "github.com/zboya/pinchtab/pkg/strategy/explicit"
+	_ "github.com/zboya/pinchtab/pkg/strategy/simple"
 )
 
 // runDashboard starts a lightweight dashboard server — no Chrome, no bridge.

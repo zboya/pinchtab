@@ -1,4 +1,4 @@
-module github.com/pinchtab/pinchtab
+module github.com/zboya/pinchtab
 
 go 1.25.0
 

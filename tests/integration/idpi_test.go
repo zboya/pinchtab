@@ -28,8 +28,8 @@ import (
 	"strings"
 	"testing"
 
-	appconfig "github.com/pinchtab/pinchtab/internal/config"
-	"github.com/pinchtab/pinchtab/tests/testutil"
+	appconfig "github.com/zboya/pinchtab/pkg/config"
+	"github.com/zboya/pinchtab/tests/testutil"
 )
 
 // idpiCfg returns an IDPIConfig preset. Callers can further override fields.

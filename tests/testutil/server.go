@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	appconfig "github.com/pinchtab/pinchtab/internal/config"
+	appconfig "github.com/zboya/pinchtab/pkg/config"
 )
 
 const (

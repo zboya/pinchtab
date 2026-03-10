@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"os"
 
-	"github.com/pinchtab/pinchtab/internal/config"
+	"github.com/zboya/pinchtab/pkg/config"
 )
 
 type profileInstanceStatus struct {

@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/pinchtab/pinchtab/internal/config"
+	"github.com/zboya/pinchtab/pkg/config"
 )
 
 func TestAssessSecurityWarnings(t *testing.T) {

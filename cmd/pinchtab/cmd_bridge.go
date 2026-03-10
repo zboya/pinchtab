@@ -10,10 +10,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/pinchtab/pinchtab/internal/assets"
-	"github.com/pinchtab/pinchtab/internal/bridge"
-	"github.com/pinchtab/pinchtab/internal/config"
-	"github.com/pinchtab/pinchtab/internal/handlers"
+	"github.com/zboya/pinchtab/pkg/assets"
+	"github.com/zboya/pinchtab/pkg/bridge"
+	"github.com/zboya/pinchtab/pkg/config"
+	"github.com/zboya/pinchtab/pkg/handlers"
 )
 
 // runBridgeServer starts a bridge without orchestrator or dashboard

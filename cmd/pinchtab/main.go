@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/pinchtab/pinchtab/internal/config"
+	"github.com/zboya/pinchtab/pkg/config"
 )
 
 var version = "dev"
