@@ -1,0 +1,36 @@
+name: Sync Upstream
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/pinchtab/pinchtab.git
+          git fetch upstream
+
+      - name: Sync to fork branch (skip main)
+        run: |
+          BRANCHES=("fork")
+
+          for branch in "${BRANCHES[@]}"; do
+            echo "Syncing $branch..."
+            git checkout $branch
+            git merge upstream/main --no-edit || echo "Merge conflict in $branch, skipping"
+            git push origin $branch
+          done
